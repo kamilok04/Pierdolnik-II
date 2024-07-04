@@ -47,7 +47,7 @@ ret
 jmp $
 
 info db "LEGIA TO CHUJE A LECH MISTRZ POLSKI", 0
-colors
+colors:
 times 5 db 10
 times 4 db 15
 times 5 db 12
