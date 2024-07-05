@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.8)
 
 
 # MAKRA ======================================================
@@ -26,11 +26,22 @@ MACRO(MACRO_ENSURE_SYSROOT DIR)
 ENDMACRO(MACRO_ENSURE_SYSROOT)
 # ============================================================
 
+# wsparcie dla starszych CMake
+# o co chodzi? wersje <3.30 mają buga
+# traktują NASM jak linker, którym oczywiście nie jest
+if($<VERSION_LESS:${VERSION},"3.30">)
+set(CMAKE_ASM_NASM_LINK_EXECUTABLE "ld <CMAKE_ASM_NASM_LINK_FLAGS> <LINK_FLAGS>\
+<OBJECTS> -o <TARGET> <LINK_LIBRARIES>")
+set(CMAKE_ASM_NASM_SOURCE_FILE_EXTENSIONS
+${CMAKE_ASM_NASM_SOURCE_FILE_EXTENSIONS} s S)
+endif()
+
 set(CMAKE_ASM_NASM_LINK_EXECUTABLE "ld <CMAKE_ASM_NASM_LINK_FLAGS> <LINK_FLAGS> <OBJECTS>  -o <TARGET> <LINK_LIBRARIES>")
 set(CMAKE_SYSTEM_NAME PierdolnikOS)
-set(CMAKE_SYSTEM_PROCESSOR AMD64)
+set(CMAKE_SYSTEM_PROCESSOR AMD64) # bardzo daleko w przyszłości todo: inne architektury?
+set(PROCESSOR_MODEL "2137") # Sposoby budowania mogą się zmienić w zależności od tego tu
 
-MACRO_ENSURE_SYSROOT(${CMAKE_SOURCE_DIR}/sysroot)
+MACRO_ENSURE_SYSROOT(${CMAKE_CURRENT_SOURCE_DIR}/sysroot)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set_property(CACHE CMAKE_INSTALL_PREFIX PROPERTY VALUE ${CMAKE_SYSROOT})
@@ -75,23 +86,46 @@ set(KERNEL_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/kernel/arch/${HOSTARCH})
 # 2. NIE WOLNO tego wsadzić do linkera
 # 3. powinno się użyć install(), ale bootloader jest oczywiście Specjalny™
 add_custom_target(boot
-COMMAND "nasm" "${KERNEL_ROOT}/boot.asm" "-fbin" "-o ${CMAKE_SYSROOT}/boot/boot.bin" VERBATIM
+COMMAND ${CMAKE_ASM_NASM_COMPILER} "${KERNEL_ROOT}/boot.asm" "-fbin" "-o${CMAKE_SYSROOT}/boot/boot.bin" VERBATIM
 )
 
 add_executable(kernel
     ${KERNEL_ROOT}/kernel.asm
 )
+install(TARGETS kernel DESTINATION sysroot/kernel)
 
-install(TARGETS kernel DESTINATION ${CMAKE_SYSROOT}/kernel)
-add_custom_target(compile_system ALL DEPENDS boot kernel
-# kernel musi być na dyskietce :)
-COMMAND "dd" "if=/dev/zero" "of=${CMAKE_SYSROOT}/boot/boot.img" "bs=1024" "count=1440"  # 1.44MiB - zwykła dyskietka, jak standard El Torrito wymaga
+if(${PROCESSOR_MODEL} EQUAL "8086") # wsparcie dla ANTYKÓW
+    add_custom_target(compile_system ALL DEPENDS boot kernel
+    # kernel musi być na dyskietce :)
+    COMMAND "dd" "if=/dev/zero" "of=${CMAKE_SYSROOT}/boot/boot.img" "bs=1024" "count=1440"  # 1.44MiB - zwykła dyskietka, jak standard El Torrito wymaga
                                                                                         # 1200KiB i 2880MiB też są dopuszczalne
-                                                                                        # TODO: popatrzeć na no-emul-boot
-COMMAND "dd" "if=${CMAKE_SYSROOT}/boot/boot.bin" "of=${CMAKE_SYSROOT}/boot/boot.img" "seek=0" "count=1" "conv=notrunc"
-COMMAND "genisoimage" "-V" "'WPIERDOL'" "-input-charset" "iso8859-1" "-o" "../wpierdol.iso" "-b" "boot/boot.img" "-hide" "boot/boot.img" "${CMAKE_SYSROOT}" 
-# COMMAND "genisoimage" "-V" "'WPIERDOL'" "-no-emul-boot" "-input-charset" "iso8859-1" "-o" "../wpierdol.iso" "-b" "boot/boot.img" "-hide" "boot/boot.img" "${CMAKE_SYSROOT}" 
+                                                                                        # ~TODO: popatrzeć na no-emul-boot
+    COMMAND "dd" "if=${CMAKE_SYSROOT}/boot/boot.bin" "of=${CMAKE_SYSROOT}/boot/boot.img" "seek=0" "count=1" "conv=notrunc"
+    COMMAND "genisoimage" "-V" "'WPIERDOL'" "-input-charset" "iso8859-1" "-o" "../wpierdol.iso" "-b" "boot/boot.img" "-hide" "boot/boot.img" "${CMAKE_SYSROOT}" 
+) 
+else() # tu idzie wszystko nowsze niż 1982
+add_custom_target(compile_system ALL DEPENDS boot kernel
+COMMAND "genisoimage"
+"-V" "'WPIERDOL'" 
+"-no-emul-boot"
+"-boot-load-size" "4" 
+"-input-charset" "iso8859-1"
+"-c" "boot/bootcat" 
+"-o" "../wpierdol.iso" 
+"-b" "boot/boot.bin" 
+"-hide" "boot/boot.bin" 
+"${CMAKE_SYSROOT}" 
 )
+endif()
 
 
 
+
+
+add_custom_target(run_system DEPENDS compile_system
+COMMAND "killall" "qemu-system-i386" ">" "/dev/null"    # o co chodzi z tym >/dev/null?
+                                                        # killall się sypie, jeśli żadnej maszyny nie ma
+                                                        # a to zamiata błąd pod dywan
+                                                        # efekt uboczny: wszystkie inne (być może bez związku) maszyny też umrą
+COMMAND "qemu-system-i386" "-cdrom" "${CMAKE_SYSROOT}/../wpierdol.iso" "-daemonize"
+)

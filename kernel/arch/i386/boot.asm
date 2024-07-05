@@ -1,29 +1,29 @@
 [bits 16]
 [org 0x7c00]
 
-; chcę kolory!
-xor ah, ah
-mov al, 0xd
-int 0x10
+segment .text
 
-; ustaw tekst jak dla człowieka
-mov dx, 0x0b03
-xor bx, bx
-mov ah, 2
-int 0x10
+global start
+start:
+cli ; nie mów do mnie teraz 
+mov [bootsect.bootDrive], dl
 
-mov si, info
-call puts
+mov ax, cs
+mov ds, ax
+mov es, ax
+mov ss, ax
+mov sp, 0x7c00
+sti
 
-jmp $
-; wyświetla se znaczek
-; wchodzi:
-; AL - znak do zrobienia
-; AH - polecenie (wyświetl znak)
-; BH - strona (0)
-; BL - kolor
-; wychodzi: nic
+mov dl, [bootsect.bootDrive]
+xor ax, ax 
+int 0x13
+; DL = dysk rozruchowy
+; AL = 0
+jc demolka
 
+; nie mam nic do roboty, restart bo czemu ni 
+call reboot
 
 putc:
     mov ah, 0x0e
@@ -34,7 +34,11 @@ ret
 puts:
     .next:
     mov al, [si]
-    mov bl, [si + colors - info]
+    mov bl, 9   ; wolniejsze niż danie tego przy wywołaniu funkcji, ale
+                ; 1. co z tego? ten program ma tylko wyjść
+                ; 2. w kodzie to jest 1 bajt zamiast np. 3
+                ;    a że cały kod może mieć 446 bajtów, no to yyy 
+                ; 3. pewniejsze
     inc si
     or al, al
     jz .yeet
@@ -44,15 +48,41 @@ puts:
     .yeet:
 ret
 
-jmp $
+rebootprompt: db "wciskaj co, aby reset", 0
+reboot:
+mov si, rebootprompt
+call puts
+xor ax, ax
+int 0x16 ; czekaj na naciśnięcie czegoś
+jmp 0xffff:0
 
-info db "LEGIA TO CHUJE A LECH MISTRZ POLSKI", 0
-colors:
-times 5 db 10
-times 4 db 15
-times 5 db 12
-times 3 db 15
-times 4 db 11
-times 14 db 15
+
+diskerror: db "dysk w pizdu"
+demolka:
+mov si, diskerror
+call puts
+call reboot
+
+bootsect:
+.OEM:       db "WPIERDOL" ; nazwa systemu
+.sectSize:  dw 0x200 ; bajty na sektor
+.clustSize: db 1    ; ile sektorów?
+.resSect:   dw 1      ; ile zarezerwowanych sektorów? (o ten tu)
+.fatCnt:    db 2
+.rootSize:  dw 224
+.totalSect: dw 2880
+.media:     db 0xf0
+.fatSize:   dw 9
+.trackSect: dw 9
+.headCnt:   dw 2
+.hiddenSect:dd 0
+.bigSects:  dd 0
+.bootDrive: db 0
+.reserved:  db 0
+.bootSign:  db 0x29
+.volID:     db "PIWO"
+.volLabel:  db "PIERDOLNIKV2"
+.fsType:    db "FAT16   "
+
 times 510 - ($ - $$) db 0
 dw 0xaa55
