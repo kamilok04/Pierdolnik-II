@@ -86,7 +86,12 @@ set(KERNEL_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/kernel/arch/${HOSTARCH})
 # 2. NIE WOLNO tego wsadzić do linkera
 # 3. powinno się użyć install(), ale bootloader jest oczywiście Specjalny™
 add_custom_target(boot
-COMMAND ${CMAKE_ASM_NASM_COMPILER} "${KERNEL_ROOT}/boot.asm" "-fbin" "-o${CMAKE_SYSROOT}/boot/boot.bin" VERBATIM
+COMMAND ${CMAKE_ASM_NASM_COMPILER} 
+"${KERNEL_ROOT}/boot.asm" 
+"-fbin"
+"-o${CMAKE_SYSROOT}/boot/boot.bin" 
+"$<$<CONFIG:DEBUG>:-ldebug.lst>"
+VERBATIM
 )
 
 add_executable(kernel
@@ -101,31 +106,34 @@ if(${PROCESSOR_MODEL} EQUAL "8086") # wsparcie dla ANTYKÓW
                                                                                         # 1200KiB i 2880MiB też są dopuszczalne
                                                                                         # ~TODO: popatrzeć na no-emul-boot
     COMMAND "dd" "if=${CMAKE_SYSROOT}/boot/boot.bin" "of=${CMAKE_SYSROOT}/boot/boot.img" "seek=0" "count=1" "conv=notrunc"
-    COMMAND "genisoimage" "-V" "'WPIERDOL'" "-input-charset" "iso8859-1" "-o" "../wpierdol.iso" "-b" "boot/boot.img" "-hide" "boot/boot.img" "${CMAKE_SYSROOT}" 
+    COMMAND "xorriso" "-as" "mkisofs" "-V" "'WPIERDOL'" "-input-charset" "iso8859-1" "-o" "../wpierdol.iso" "-b" "boot/boot.img" "-hide" "boot/boot.img" "${CMAKE_SYSROOT}" 
 ) 
 else() # tu idzie wszystko nowsze niż 1982
 add_custom_target(compile_system ALL DEPENDS boot kernel
-COMMAND "genisoimage"
-"-V" "'WPIERDOL'" 
-"-no-emul-boot"
-"-boot-load-size" "4" 
+COMMAND "xorriso"
+"-as" "mkisofs" 
 "-input-charset" "iso8859-1"
-"-c" "boot/bootcat" 
+"-R" # włącz uniksopodobne nazwy plików + atrybuty dostępu
+"-iso-level" "3" # zezwól na duże pliki
+"-V" "'WPIERDOL'" 
+#"-U" # nagnij specyfikację i rozszerz zestaw znaków nazw plików
+"-no-emul-boot" # zrywamy z antycznym sposobem, czyli emulacją dyskietki (Pierdolnik v1)
+"-boot-load-size" "4" # wymagane przez -no-emul-boot
+"-b" "boot/boot.bin" # plik rozruchowy
+"-G" "${CMAKE_SYSROOT}/boot/boot.bin" # skopiuj go na początek CD, gdyby z jakiegoś powodu BIOS uznał płytę za dysk twardy
+"-hide" "boot/boot.bin" # ukryj plik rozruchowy w spisie katalogów
 "-o" "../wpierdol.iso" 
-"-b" "boot/boot.bin" 
-"-hide" "boot/boot.bin" 
 "${CMAKE_SYSROOT}" 
 )
 endif()
 
-
-
-
-
 add_custom_target(run_system DEPENDS compile_system
-COMMAND "killall" "qemu-system-i386" ">" "/dev/null"    # o co chodzi z tym >/dev/null?
+COMMAND "killall" "qemu-system-i386" "||" "true"    # o co chodzi z tym >/dev/null?
                                                         # killall się sypie, jeśli żadnej maszyny nie ma
                                                         # a to zamiata błąd pod dywan
                                                         # efekt uboczny: wszystkie inne (być może bez związku) maszyny też umrą
-COMMAND "qemu-system-i386" "-cdrom" "${CMAKE_SYSROOT}/../wpierdol.iso" "-daemonize"
+COMMAND "qemu-system-i386" 
+"-cdrom" "${CMAKE_SYSROOT}/../wpierdol.iso" "-daemonize"
+"$<$<CONFIG:DEBUG>:-s>" # otwórz port 1234 dla debuggera
+"$<$<CONFIG:DEBUG>:-S>" # czekaj na zezwolenie od debuggera, zanim zaczniesz działać
 )
