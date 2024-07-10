@@ -30,13 +30,14 @@ ENDMACRO(MACRO_ENSURE_SYSROOT)
 # o co chodzi? wersje <3.30 mają buga
 # traktują NASM jak linker, którym oczywiście nie jest
 if($<VERSION_LESS:${VERSION},"3.30">)
-set(CMAKE_ASM_NASM_LINK_EXECUTABLE "ld <CMAKE_ASM_NASM_LINK_FLAGS> <LINK_FLAGS>\
-<OBJECTS> -o <TARGET> <LINK_LIBRARIES>")
 set(CMAKE_ASM_NASM_SOURCE_FILE_EXTENSIONS
 ${CMAKE_ASM_NASM_SOURCE_FILE_EXTENSIONS} s S)
 endif()
 
-set(CMAKE_ASM_NASM_LINK_EXECUTABLE "ld <CMAKE_ASM_NASM_LINK_FLAGS> <LINK_FLAGS> <OBJECTS>  -o <TARGET> <LINK_LIBRARIES>")
+set(CMAKE_ASM_NASM_LINK_EXECUTABLE 
+"ld <CMAKE_ASM_NASM_LINK_FLAGS>\
+<LINK_FLAGS> <OBJECTS> \
+-o <TARGET> <LINK_LIBRARIES>")
 set(CMAKE_SYSTEM_NAME PierdolnikOS)
 set(CMAKE_SYSTEM_PROCESSOR AMD64) # bardzo daleko w przyszłości todo: inne architektury?
 set(PROCESSOR_MODEL "2137") # Sposoby budowania mogą się zmienić w zależności od tego tu
@@ -54,11 +55,14 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 set(CMAKE_C_COMPILER ${PREFIX}gcc)
-set(CMAKE_C_FLAGS "-o2 -g --sysroot=${SYSROOT} -ffreestanding -nostdlib -Wall -Wextra")
+#set(CMAKE_C_FLAGS "-o2 -g --sysroot=${SYSROOT} -ffreestanding -nostdlib -Wall -Wextra")
 set(CMAKE_ASM_NASM_COMPILER nasm)
 set(CMAKE_ASM_NASM_FILE_EXTENSIONS .asm)
-set(CMAKE_ASM_NASM_FLAGS "-g -Fdwarf")
+#set(CMAKE_ASM_NASM_FLAGS "-g -Fdwarf")
 set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)
+
+
+
 
 set(CMAKE_HOST "i686-elf")
 string(REGEX MATCH "i[0-9]86" HOSTARCH ${CMAKE_HOST})
@@ -90,14 +94,22 @@ COMMAND ${CMAKE_ASM_NASM_COMPILER}
 "${KERNEL_ROOT}/boot.asm" 
 "-fbin"
 "-o${CMAKE_SYSROOT}/boot/boot.bin" 
-"$<$<CONFIG:DEBUG>:-ldebug.lst>"
+"$<$<CONFIG:DEBUG>:-llistings/boot.lst>"
+VERBATIM
+COMMAND ${CMAKE_ASM_NASM_COMPILER} 
+"${KERNEL_ROOT}/boot2.asm" 
+"-fbin"
+"-o${CMAKE_SYSROOT}/boot/bot2.bin" 
+"$<$<CONFIG:DEBUG>:-llistings/boot2.lst>"
 VERBATIM
 )
+
 
 add_executable(kernel
     ${KERNEL_ROOT}/kernel.asm
 )
-install(TARGETS kernel DESTINATION sysroot/kernel)
+set_target_properties(kernel PROPERTIES
+RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SYSROOT}/kernel)
 
 if(${PROCESSOR_MODEL} EQUAL "8086") # wsparcie dla ANTYKÓW
     add_custom_target(compile_system ALL DEPENDS boot kernel
@@ -109,7 +121,7 @@ if(${PROCESSOR_MODEL} EQUAL "8086") # wsparcie dla ANTYKÓW
     COMMAND "xorriso" "-as" "mkisofs" "-V" "'WPIERDOL'" "-input-charset" "iso8859-1" "-o" "../wpierdol.iso" "-b" "boot/boot.img" "-hide" "boot/boot.img" "${CMAKE_SYSROOT}" 
 ) 
 else() # tu idzie wszystko nowsze niż 1982
-add_custom_target(compile_system ALL DEPENDS boot kernel
+add_custom_target(compile_system ALL DEPENDS boot kernel 
 COMMAND "xorriso"
 "-as" "mkisofs" 
 "-input-charset" "iso8859-1"
@@ -137,3 +149,4 @@ COMMAND "qemu-system-i386"
 "$<$<CONFIG:DEBUG>:-s>" # otwórz port 1234 dla debuggera
 "$<$<CONFIG:DEBUG>:-S>" # czekaj na zezwolenie od debuggera, zanim zaczniesz działać
 )
+
