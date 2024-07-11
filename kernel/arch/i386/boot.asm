@@ -2,23 +2,11 @@
 
 segment .text
 global start
-; po namyśle dotarłem do wniosku
-; że zamiast planowanego FAT12/16
-; spróbuję użyć exFAT
-; po dwóch namysłach postanowiłem, że spróbuję czegoś innego
-; to będzie dystrybucja LiveCD
-; system plików: ISO 9660 + Rock Ridge
-; problem i to spory: nie ma możliwości zapisu, jeśli rozruch nie jest z CD-RW/DVD±RW/DVD-RAM
-; na razie będzie ramdisk, potem coś się wymyśli
 
-; konwencja: za blokami opisanymi
-; - koniec -
-; można stawiać cokolwiek
-; Pozostałych bloków bym nie ruszał
-; x86, w odróżnieniu od np. C, 
-; używa mechaniki "spadania" między funkcjami
-; (IP leci do przodu i tyle)
-; i możesz sobie sporo zepsuć, tasując rzeczy
+jmp start ; wygląda jak syf
+nop       ; ale to standardowa praktyka
+
+%include "./boot_common.inc"
 
 ; tu się zaczyna właściwy kod
 start:
@@ -33,7 +21,7 @@ start:
     mov sp, bp
     sti
 
-    call loading
+    REPORT loadingInfo
 
     ; druga runda żyje na dysku
     ; dane dostępowe są w szesnastym sektorze
@@ -90,7 +78,7 @@ start:
     call resetDrive
     call CHSAttempt
     jnc short .loadSuccess
-    call diskError
+    ERROR diskErrorInfo
 
     ; - koniec -
 
@@ -132,6 +120,7 @@ start:
     ; znalazłem folder, co wczytać?
     mov eax, dword[di - 8 + 2] ; cofnij do początku wpisu i przewiń 2 bity w przód
     mov dword[diskPacket.sector], eax
+    mov dword[diskPacket.targetAddr], 0x1800 ; nie nadpisuj tabeli ścieżek
     call LBALoad
 
     
@@ -143,7 +132,7 @@ start:
     ; dlaczego niby BOT zamiast BOOT?
     ; z lenistwa, za parę linijek zobaczysz :)
 
-    mov di, 0x1000
+    mov di, 0x1800
     mov cx, 0x800 ; nie wyjedź za sektor
     mov al, ';'
     cld ; szukaj w dobrą stronę :)
@@ -151,7 +140,7 @@ start:
 .findASemicolon:
     repne scasb
     test cx, cx
-    jz short .noStage2 ; ostatnia możliwa wartość średnika to 0x17ff => CX = 1
+    jz short .noStage2File ; ostatnia możliwa wartość średnika to 0x17ff => CX = 1
 
     ; czy za tym stoi jedynka? 
     ; przypominajka: REPxx zostawiają wartość (E/R)DI, która *byłaby sprawdzana następna*,
@@ -164,9 +153,21 @@ start:
     jne short .findASemicolon
     cmp dword[di-9], "BOT2" ; BOOT2.BIN by się nie zmieścił :)
     jne short .findASemicolon
+    jmp short .fileFound
 
     ; mamy plik! Ładuj
-
+.wrongPath:
+    cmp di, 0x2000 ; koniec sektora
+    jge .noStage2File
+    test cx, cx
+    jz .noStage2File    ; puste wpisy, koniec listy
+    add di, 9       ; tyle zajmuje struktura
+.wrongPathName:
+    add di, cx 
+    and di, 0xfffe ; uwzględnij padding
+    ; próbuj dalej
+    jmp short .readPathTableEntry
+.fileFound:
     ; ile sektorów, mocium panie?
     mov eax, dword[di-0x20] ; ISO 9660 pozdrawia <3
     shr eax, 11 ; podziel przez 0x800 (rozmiar sektora)
@@ -176,36 +177,13 @@ start:
     ; od którego sektora zacząć?
     mov eax, dword[di-0x28]
     mov dword[diskPacket.sector], eax
-
     call LBALoad
 
     ; gotowe, spadam stąd!
-    
-    jmp 0:0x1000
-    
+    jmp 0:0x1800
 
-
-.wrongPath:
-    cmp di, 0x1800 ; koniec sektora
-    jge .noStage2
-    test cx, cx
-    jz .noStage2    ; puste wpisy, koniec listy
-    add di, 9       ; tyle zajmuje struktura
-.wrongPathName:
-    add di, cx 
-    and di, 0xfffe ; uwzględnij padding
-    ; próbuj dalej
-    jmp short .readPathTableEntry
-
-.noStage2:
-    call loading
-    call loading
-    call diskError
-
-
-
-
-
+.noStage2File:
+    ERROR noStage2Info
 
 ; resetuje dysk
 ; przyjmuje: nic
@@ -218,7 +196,7 @@ resetDrive:
     jc .failed
     ret
 .failed:
-    call diskError
+    ERROR diskErrorInfo
 
 ; czyta sektor z dysku z użyciem LBA
 ; próbuje trzy razy i jeśli się nie uda, kończy tę imprezę
@@ -238,41 +216,13 @@ LBALoad:
     dec cx
     jmp .tryRead
 .failed:
-    call diskError
+    ERROR diskErrorInfo
 .bye:
     ret
 
-; drukuje jeden znak na ekranie
-; przyjmuje: AL - znak do wyplucia
-; zwraca: nic
-; zaśmieca: BH
-; może zaśmiecić BP, jeśli BIOS jest robiony po taniości
-putc:
-    mov ah, 0x0e
-    xor bh, bh
-    int 0x10
-ret
 
-puts:
-    .next:
-    mov al, [si]
-    mov bl, 9   ; wolniejsze niż danie tego przy wywołaniu funkcji, ale
-                ; 1. co z tego? ten program ma tylko wyjść
-                ; 2. w kodzie to jest 1 bajt zamiast np. 3
-                ;    a że cały kod może mieć 446* bajtów, no to yyy 
-                ; 3. pewniejsze
-                ; *zależy od użytego systemu plików, systemu rozruchu itd.
-                ; **w tym szczególnym przypadku LiveCD rozruch może mieć 2046 bajtów
-    inc si
-    or al, al
-    jz .yeet
-    call putc
-    jmp .next
-
-    .yeet:
-ret
-
-; jak tego antyku użyć?
+; ładuje dane z nośnika tak, jak zrobiłby twój dziadek
+; przyjmuje:
 ; AH = 2
 ; AL = liczba zamawianych sektorów
 ; CH = zamawiany cylinder & 0xff
@@ -280,7 +230,12 @@ ret
 ; DH = głowica (ale też 2 wysokie bity cylindra, bo tak)
 ; ES:BX = adres docelowy
 ; DL = numer dysku (dysk twardy zwykle 0x80, CD zwykle 0xe0)
-; i oczywiście int 0x13 i módl się, żeby się nie rozleciało
+; zwraca: 
+; smutek, gorycz, żal
+; AH - kod nieuniknionego błędu
+; AL - liczba pomyślnie przerzuconych sektorów
+; zaśmieca: nic, bo wszystkiego używa
+; flagi: CF jeśli błąd
 
 CHSAttempt:
 cld
@@ -296,26 +251,6 @@ mov bx, 0x1000  ; adres docelowy
 int 0x13
 ret
 
-loadingprompt: db "Wczytywanie...", 13, 10, 0
-loading:
-mov si, loadingprompt
-call puts
-ret
-
-rebootprompt: db 13, 10, "wciskaj co, aby reset", 0
-reboot:
-mov si, rebootprompt
-call puts
-xor ax, ax
-int 0x16 ; czekaj na naciśnięcie czegoś
-jmp 0xffff:0
-
-diskerrorprompt: db "dysk w pizdu", 13, 10, 0
-diskError:
-mov si, diskerrorprompt
-call puts
-call reboot
-
 ; materiały, które napotkałem, zalecają tu dyrektywę
 ; align 32
 ; ale z nią zachodzi kataklizm i żaden odczyt nie działa
@@ -325,8 +260,11 @@ diskPacket:
                 db 0x10   ; rozmiar struktury
                 db 0      ; tu musi być 0
 .sectorsCount:  dw 1      ; zamawiam 1 sektor
-                dd 0x1000 ; adres docelowy; to musi zaczynać się na parzystym bicie
+.targetAddr:    dd 0x1000 ; adres docelowy; to musi zaczynać się na parzystym bicie
 .sector:        dq 16     ; numer LBA
 
-times 2048 - ($ - $$) db 0
+
+times 510 - ($ - $$) db 0   ; domyślnie używam nie-emulowanego El Torrito, czyli mam 2KB na bootloader pierwszej fazy
+                            ; wolałbym jednak, żeby z dyskietki też się dało tym uruchomić system
+                            ; w razie czego
 dw 0xaa55

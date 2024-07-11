@@ -92,12 +92,14 @@ set(KERNEL_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/kernel/arch/${HOSTARCH})
 add_custom_target(boot
 COMMAND ${CMAKE_ASM_NASM_COMPILER} 
 "${KERNEL_ROOT}/boot.asm" 
+"-i${KERNEL_ROOT}/"
 "-fbin"
 "-o${CMAKE_SYSROOT}/boot/boot.bin" 
 "$<$<CONFIG:DEBUG>:-llistings/boot.lst>"
 VERBATIM
 COMMAND ${CMAKE_ASM_NASM_COMPILER} 
 "${KERNEL_ROOT}/boot2.asm" 
+"-i${KERNEL_ROOT}/"
 "-fbin"
 "-o${CMAKE_SYSROOT}/boot/bot2.bin" 
 "$<$<CONFIG:DEBUG>:-llistings/boot2.lst>"
