@@ -3,23 +3,39 @@
 segment .text
 global start
 
-jmp start ; wygląda jak syf
-nop       ; ale to standardowa praktyka
+jmp 0:start ; wygląda jak syf
+nop         ; ale to standardowa praktyka
+            ; chodzi o to, że niektóre BIOS ustawiają (standardowe)
+            ; CS = 0, IP = 0x7c00
+            ; a niektóre są specjalne i ustawiają
+            ; CS = 0x7c00, IP = 0
+            ; oczywiście na początku na jedno wychodzi, ale potem mogą się dziać fikołki
+            ; typu "o, nie mogę ustawić IVT" bo przy CS = 0x7c00 pamięć 0x0-0x7bff jest nieosiągalna
+            ; poza tym wersja z IP = 0 wymagałaby [ORG 0] jako pierwszej linijki
 
+; to jest dobre miejsce na takie coś
+; inne alternatywy:
+; za startem (problem: ten kod będzie chciał się wykonać przy bootowaniu i i tak musisz go ominąć)
+; na końcu pliku (problemy:
+; - referencje mogą być niezdefiniowane
+; - prawdopodobnie trzeba będzie wykonywać bliskie skoki po pliku zamiast krótkich
+;   krótkie mają zasięg [-128; +127], a bliskie wymagają więcej bajtów (a mamy ich trochę mało :))
 %include "./boot_common.inc"
 
 ; tu się zaczyna właściwy kod
 start:
 
     ; przygotuj rejestry
-    cli ; przerwanie w tym miejscu spowodowałoby burdel, wyłącz je
+    ; cli ; przerwanie w tym miejscu spowodowałoby burdel, wyłącz je
     mov bp, 0x7c00
     xor ax, ax
     mov ds, ax
     mov es, ax
-    mov ss, ax
+    mov SS, ax ; przesunięcie do SS wymusza skupienie uwagi
+               ; i ogólnie zwiększa posłuszeństwo wobec rozkazów
     mov sp, bp
-    sti
+   ; sti
+   ; jeeej, dwa bajty mniej
 
     REPORT loadingInfo
 
@@ -101,6 +117,7 @@ start:
     ; mamy tablicę folderów
     ; znajdź taki o nazwie 'BOOT'
     mov di, 0x1000
+
 .readPathTableEntry:
     ; pierwsze kryterium: długość nazwy == 4
 
@@ -136,7 +153,6 @@ start:
     mov cx, 0x800 ; nie wyjedź za sektor
     mov al, ';'
     cld ; szukaj w dobrą stronę :)
-
 .findASemicolon:
     repne scasb
     test cx, cx
@@ -147,6 +163,8 @@ start:
     ; czyli "o 1 za daleko"
     cmp byte[di], '1' ; nie di+1
     jne short .findASemicolon
+
+
     
     ; trzecie kryterium: czy to się nazywa "BOT2.BIN"?
     cmp dword[di-5], ".BIN"
@@ -154,8 +172,7 @@ start:
     cmp dword[di-9], "BOT2" ; BOOT2.BIN by się nie zmieścił :)
     jne short .findASemicolon
     jmp short .fileFound
-
-    ; mamy plik! Ładuj
+ 
 .wrongPath:
     cmp di, 0x2000 ; koniec sektora
     jge .noStage2File

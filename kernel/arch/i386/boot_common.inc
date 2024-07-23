@@ -35,8 +35,10 @@ call reboot
 %endmacro
 
 %macro REPORT 0-1 si
+    push si
     mov si, %1
     call puts
+    pop si
 %endmacro
 ; ------
 
@@ -47,9 +49,11 @@ call reboot
 ; flagi: oby nie
 ; może zaśmiecić BP, jeśli BIOS jest robiony po taniości
 putc:
+    push bx
     mov ah, 0x0e
     xor bh, bh
     int 0x10
+    pop bx
     ret
 
 
@@ -59,6 +63,8 @@ putc:
 ; zaśmieca: AL, BL
 ; flagi: ZF
 puts:
+    push ax
+    push bx
     .next:
     mov al, [si]
     mov bl, 9   ; wolniejsze niż danie tego przy wywołaniu funkcji, ale
@@ -75,6 +81,8 @@ puts:
     jmp .next
 
     .yeet:
+    pop bx
+    pop ax
     ret
 
 
@@ -89,6 +97,7 @@ jmp 0xffff:0
 ; zrzuć system z rowerka i go nie resetuj
 ; nie wiem wsm, do debugowania może się przyda?
 %macro CRASH 0
+REPORT byeInfo
 cli
 hlt 
 ; tak, to wystarczy :)
@@ -102,5 +111,4 @@ rebootInfo: db 13, 10, "wciskaj co, aby reset", 0
 loadingInfo: db "Wczytywanie...", 13, 10, 0
 diskErrorInfo: db "dysk w pizdu", 13, 10, 0
 noStage2Info: db "Brakuje reszty bootloadera, dalej nie jade", 13, 10, 0  
-stage2Info: db "Pierdolnik2, czekaj...", 13, 10, 0
 byeInfo: db "ROZDUPCAM", 13, 10, 0 

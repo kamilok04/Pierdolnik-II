@@ -1,4 +1,5 @@
 [bits 16]
+[org 0x1800]
 
 segment .text
 global round2
@@ -7,6 +8,8 @@ jmp round2
 nop
 
 %include "boot_common.inc"
+%include "boot_helper.inc"
+
 
 round2:
 
@@ -17,14 +20,24 @@ round2:
 ;
 ; włączyć tryb chroniony (a może i bezpośrednio długi)
 
+; zainstaluj tę "obsługę"
+mov dword[0x18], int6handler
+mov dword[0xc], int3handler
 
-; drogi Czytelniku
-; wybacz mi następne kilka linijek
+REPORT stage2Info
+ 
+; czy obługa wyjątków działa?
+int3
 
-mov si, 0x7c8e
-call 0:0x7c0b
 
-mov si, 0x7ca7
-call 0:0x7c0b
+; czy CPUID jest?
+; jeśli procesor się wysypie, to nie ma
+; nie żartuję, to jest standardowa metoda
+checkCPUID: CPUID
 
-call 0:0x7c1a
+CRASH
+
+
+
+
+

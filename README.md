@@ -14,6 +14,7 @@ Wymagane narzędzia kompilowane krzyżowo (pod i-686):
 Pozostałe (ale wciąż wymagane):
 - NASM, wersja 2.00 lub wyżej - projekt używa 2.16.03
 - CMake, wersja 3.8 lub wyżej - projekt używa 3.30-rc4
+- jakiś pakiet do edycji obrazów dysków - projekt używa mtools
 
 Zalecane:
 - QEMU, wersja jakakolwiek
@@ -22,6 +23,11 @@ Zalecane:
 Kompatybilność ze starszymi wersjami gcc/gdb/binutils nie była sprawdzana, więc niczego nie obiecuję. 
 
 ### Budowanie
+
+#### Windows
+Zainstaluj jakieś WSL i patrz niżej
+
+#### Linux
 Po wypakowaniu źródła do folderu:
 
 1. Utwórz folder, w którym będą pliki tymczasowe
