@@ -38,5 +38,11 @@ W tym momencie system powinien być już gotowy, a w wypakowanym folderze powini
 
 _Uwaga_: jeśli kompilujesz z użyciem WSL, QEMU nie wyświetli okna z maszyną wirtualną. Zamiast tego należy użyć klienta VNC i połączyć go z adresem `localhost` i portem podanym przez skrypt (zazwyczaj `5900`).
 
+#### Ścieżki budowania
+- `legacy` - tradycyjny, dwupiętrowy bootloader korzystający z dobrodziejstw BIOS trybu rzeczywistego. Jest™ i Działa™, ale nie będę go znacznie rozwijał.
+- normalna - korzysta z UEFI, aby osiągnąć ten sam efekt.
+
+W zależności od ścieżki pliki wczytywane podczas bootowania i ich zawartość będą różne. Docelowo obie ścieżki mają doprowadzić do identycznie działającego systemu.
+
 #### Opcje budowania
 - `PROCESSOR_MODEL` - dokładne określenie modelu procesora. Dla wartości `8086` stosowana jest starsza metoda budowania obrazu (dyskietka rozruchowa).

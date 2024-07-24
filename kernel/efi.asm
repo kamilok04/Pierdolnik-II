@@ -97,6 +97,11 @@ segment .text follows=.header
     waitTime equ 1000000
 
 start:
+
+    ; jak sobie to uświadomiłem, to się popłakałem ze szczęścia
+    ; UEFI ustawia cię w trybie długim
+    ; okazuje się, że już nie musisz znać 16-bit asemblera, żeby postawić sobie jakiś system!
+    
     sub rsp, 6*8+8 ; ? znormalizuj stos
     ; przyszła nam SYSTEM_TABLE, przeczytaj ją
     mov [EFI_HANDLE], rcx

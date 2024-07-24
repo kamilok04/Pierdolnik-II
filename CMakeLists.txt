@@ -131,76 +131,38 @@ RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SYSROOT}/kernel)
 
 set(EFI_ROOT ${CMAKE_SYSROOT}/EFI/BOOT)
 add_custom_target(compile_system ALL DEPENDS boot kernel 
-COMMAND "rm" "-f" "${EFI_ROOT}/EFISYS.IMG"
-# zrób dyskietkę
-COMMAND "mkfs.fat"
-"-C"        # to nie jest dysk, rób do pliku
-"-F" "12"   # FAT12, dyskietka jest dużo za mała na inne smaki FATa
-"-g" "2/80" # standardowe parametry CHS dyskietki (cylinder i ścieżka to to samo)
-"-S" "512"  # rozmiar sektora (przypominajka, płyta miałaby -S 2048)
-"${EFI_ROOT}/EFISYS.IMG"
-"1440"      # liczba bloków: czemu tu jest 1440?
-            # jak szybko osiwieć, czyli nazewnictwo w informatyce
 
-            # założenie: traktujemy dysk twardy jak ciasto
-            # w teorii CHS "blok" to fizyczne miejsce na dysku:
-            #   konkretny kawałek ciasta (to jest S w CHS),
-            #   z którego bierzesz konkretny plasterek (to jest C w CHS)
-            #   i wybierasz sobie konkretną warstwę (to jest H w CHS)
+# standard UEFI, punkt 13.3.2.1
+# można uruchomić płytę po UEFI, nie emulując dyskietki ani dysku, jeśli jednocześnie:
+# 1. jest w formacie ISO9660, ale ma struktury UDF 2.0,
+# 2. jest tylko jeden system ISO9660 na płycie,
+# 3. płyta spełnia warunki El Torrito (czyli da się ją uruchomić po BIOS)
+# Wtedy bootloader jest traktowany jak program EFI.
 
-            # jasne? no to unixowcy mówiąc "blok", mają na myśli cały sektor
-            # cały kawałek ciasta :)
+# dlaczego to ważne, że nie emulujemy?
+# UEFI zapewnia łatwy dostęp do urządzenia, z którego bootujesz
+# gdyby użyć starszego podejścia (dyskietka FAT12), to musiałbym i tak znaleźć swoje DVD
+# a teraz nie jest to potrzebne
+# poza tym ogromny plus: nie muszę stawiać banalnego sterownika systemu plików (który zajął większość bootloadera BIOS),
+# bo UEFI łaskawie wystawia to dla mnie ładnie zapakowane i owinięte w kokardkę
 
-            # TL;DR 
-            # jeśli gadasz z ludźmi, to rozmiar bloku = 512
-            #  a jeśli z unixowcami, to rozmiar bloku = rozmiar sektora
-            #                        = ilość ścieżek * sektory na ścieżkę
-            #                        = 1440
+# standard sugeruje, że da się tak ustawić jedną płytę tak, żeby jednocześnie dało się z niej zbootować po UEFI i po BIOS 
+# ale tego ani nie zaleca, ani nie wymaga
+# ja tak (na poły przypadkiem) zrobiłem i nie zamierzam się tego pozbywać :)
 
-            # rozmiar dysku = 
-            # rozmiar bloku         512
-            # sektory na ścieżkę *   18
-            # ilość ścieżek      *   80    
-            # ilość głowic       *    2
-            # -------------------------
-            #        1.44 MiB = 1474560 
-
-            # czemu jest 18 sektorów na ścieżkę? To nie wygląda jak informatyczna liczba?
-            # tu się fizyka kłania: talerz dyskietki ma 360 stopni, a 18 sektorów na ścieżkę daje
-            # każdemu sektorowi tę samą szerokość 20 stopni
-
-            # Ktokolwiek pamieta o istnieniu CHS wyłącznie dlatego, 
-            # że to jedyne adresowanie akceptowane przez każdy BIOS
-            # przez krótki czas dochodziło do kwiatków typu
-            # BIOS pytający dysk SSD o parametry walców
-
-            # ale już się nie trzeba tym przejmować :D
-            # Intel ostatecznie uśmiercił BIOS
-            # od 2020 roku UEFI jest obowiązkowe na nowych sprzętach
-            # BIOS 1981-2020 [*]
-# umieść te pliki na dyskietce
-COMMAND "mmd" 
-"-i" "${EFI_ROOT}/EFISYS.IMG"
-"::/EFI"
-COMMAND "mmd" 
-"-i" "${EFI_ROOT}/EFISYS.IMG"
-"::/EFI/BOOT"
-COMMAND "mcopy"
-"-i" "${EFI_ROOT}/EFISYS.IMG"
-"${EFI_ROOT}/BOOTX64.EFI"
-"::/EFI/BOOT/BOOTX64.EFI"
-
-# zrób ISO z tą dyskietką
-COMMAND "xorriso"
-"-as" "mkisofs" 
+COMMAND "mkisofs" 
+"-udf"
 "-input-charset" "iso8859-1"
 "-R" # włącz uniksopodobne nazwy plików + atrybuty dostępu
 "-iso-level" "3" # zezwól na duże pliki
 "-V" "'WPIERDOL'" 
 #"-U" # nagnij specyfikację i rozszerz zestaw znaków nazw plików
-# ---
+"-no-emul-boot" # zrywamy z antycznym sposobem, czyli emulacją dyskietki
+"-boot-load-size" "4" # wymagane przez -no-emul-boot
+"-b" "EFI/BOOT/BOOTX64.EFI" # plik rozruchowy
 
-"-b" "EFI/BOOT/EFISYS.IMG" # plik rozruchowy
+# nie ma zabezpieczeń dla BIOS, bo nie ma BIOS
+#"-G" "${CMAKE_SYSROOT}/boot/boot.bin" # skopiuj go na początek CD, gdyby z jakiegoś powodu BIOS uznał płytę za dysk twardy
 "-o" "../wpierdol.iso" 
 "${CMAKE_SYSROOT}" 
 )
